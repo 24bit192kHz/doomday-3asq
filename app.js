@@ -1,5 +1,4 @@
-// doomday-3asq reader — a tiny archive-only manga reader that streams every page
-// from the Wayback Machine. No backend, no build step: just compressed JSON data.
+// أرشيف مانجا العاشق — قارئ محفوظ يبثّ الصفحات من Wayback Machine.
 const $ = (sel, root = document) => root.querySelector(sel);
 const app = $("#app");
 const crumb = $("#crumb");
@@ -19,17 +18,40 @@ async function gunzip(bytes) {
 async function fetchGz(url) {
   if (cache.has(url)) return cache.get(url);
   const resp = await fetch(url, { cache: "force-cache" });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = new TextDecoder().decode(await gunzip(await resp.arrayBuffer()));
   const data = JSON.parse(text);
   cache.set(url, data);
   return data;
 }
 
+// "منذ …" relative time from an ISO date (like the source site).
+function relTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso + "T00:00:00Z").getTime();
+  if (Number.isNaN(then)) return "";
+  const days = Math.floor((Date.now() - then) / 86400000);
+  if (days < 0) return "قريبًا";
+  if (days === 0) return "اليوم";
+  if (days === 1) return "منذ يوم";
+  if (days === 2) return "منذ يومين";
+  if (days <= 10) return `منذ ${days} أيام`;
+  if (days < 30) return `منذ ${days} يوم`;
+  if (days < 60) return "منذ شهر";
+  if (days < 365) return `منذ ${Math.floor(days / 30)} أشهر`;
+  if (days < 730) return "منذ سنة";
+  return `منذ ${Math.floor(days / 365)} سنوات`;
+}
+
+function fmtViews(views) {
+  if (!views) return "";
+  return views;
+}
+
 function coverPlaceholder(title) {
   const div = document.createElement("div");
   div.className = "cover-ph";
-  div.textContent = ((title || "?").trim().charAt(0) || "?").toUpperCase();
+  div.textContent = ((title || "؟").trim().charAt(0) || "؟");
   return div;
 }
 
@@ -53,205 +75,226 @@ function navLink(href, label, enabled = true) {
   return a;
 }
 
-// ---- Library ----
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+// ---------- المكتبة ----------
 
 async function renderLibrary() {
   crumb.textContent = "";
-  app.replaceChildren(Object.assign(document.createElement("div"), { className: "loading", textContent: "Loading library…" }));
+  app.replaceChildren(el("div", "loading", "جارٍ تحميل المكتبة…"));
   let data;
   try {
     data = await fetchGz("catalog.json.gz");
   } catch (error) {
-    app.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: `Failed to load catalog: ${error.message}` }));
+    app.replaceChildren(el("div", "empty", `تعذّر تحميل الفهرس: ${error.message}`));
     return;
   }
   const { stats, manga } = data;
-  const wrap = document.createElement("div");
-  wrap.className = "library";
-  const hero = document.createElement("div");
-  hero.className = "hero";
-  hero.innerHTML = `
-    <h1>3asq doomsday archive</h1>
-    <p class="sub">Every manga preserved in the Wayback Machine — readable even if the site disappears.</p>
-    <div class="stats">
-      <span><b>${stats.manga}</b> manga</span>
-      <span><b>${stats.chapters.toLocaleString()}</b> chapters</span>
-      <span><b>${stats.archived.toLocaleString()}</b> pages archived</span>
-    </div>`;
+
+  const head = el("div", "lib-head");
+  const h1 = el("h1");
+  h1.innerHTML = 'مانجا <span>العاشق</span> — الأرشيف';
+  const sub = el("p", "lib-sub", "نسخة محفوظة كاملة من الموقع، تُقرأ حتى لو اختفى الموقع الأصلي.");
+  const titleWrap = el("div");
+  titleWrap.append(h1, sub);
+  head.append(titleWrap);
+
+  const statsRow = el("div", "stats");
+  statsRow.append(
+    statChip(stats.manga, "مانجا"),
+    statChip(stats.chapters.toLocaleString("ar-EG"), "فصل"),
+    statChip(stats.archived.toLocaleString("ar-EG"), "صفحة محفوظة")
+  );
+
   const search = document.createElement("input");
   search.className = "search";
   search.type = "search";
-  search.placeholder = `Search ${stats.manga} titles…`;
-  hero.append(search);
-  const grid = document.createElement("div");
-  grid.className = "grid";
-  wrap.append(hero, grid);
-  app.replaceChildren(wrap);
+  search.placeholder = `ابحث في ${stats.manga} مانجا…`;
+
+  const grid = el("div", "grid");
+  app.replaceChildren(head, statsRow, search, grid);
 
   const render = (filter) => {
     const q = (filter || "").trim().toLowerCase();
     const list = q ? manga.filter((m) => (m.title || "").toLowerCase().includes(q)) : manga;
     grid.replaceChildren(...list.map(card));
-    if (!list.length) {
-      grid.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: "No matches." }));
-    }
+    if (!list.length) grid.replaceChildren(el("div", "empty", "لا نتائج."));
   };
   render("");
   search.addEventListener("input", (e) => render(e.target.value));
 }
 
+function statChip(value, label) {
+  const chip = el("div", "stat");
+  chip.append(el("b", null, value), document.createTextNode(label));
+  return chip;
+}
+
 function card(m) {
-  const a = document.createElement("a");
-  a.className = "card";
+  const a = el("a", "card");
   a.href = `#/manga/${enc(m.slug)}`;
-  const cover = document.createElement("div");
-  cover.className = "card-cover";
+  const cover = el("div", "card-cover");
   cover.append(coverImg(m.cover, m.title));
-  const body = document.createElement("div");
-  body.className = "card-body";
-  const title = document.createElement("div");
-  title.className = "card-title";
-  title.textContent = m.title || m.slug;
-  const meta = document.createElement("div");
-  meta.className = "card-meta";
-  meta.textContent = `${m.chapters} chapters`;
-  body.append(title, meta);
+  if (m.last) cover.append(el("div", "card-badge", `الفصل ${m.last}`));
+  const body = el("div", "card-body");
+  body.append(el("div", "card-title", m.title || m.slug));
+  const meta = el("div", "card-meta");
+  if (m.updated) {
+    meta.append(el("span", "hot", relTime(m.updated)), document.createTextNode(" · "));
+  }
+  meta.append(document.createTextNode(`${m.chapters} فصل`));
+  body.append(meta);
   a.append(cover, body);
   return a;
 }
 
-// ---- Manga (chapter list) ----
+// ---------- صفحة المانجا ----------
 
 async function renderManga(slug) {
   crumb.textContent = "";
-  app.replaceChildren(Object.assign(document.createElement("div"), { className: "loading", textContent: "Loading…" }));
+  app.replaceChildren(el("div", "loading", "جارٍ التحميل…"));
   let data;
   try {
     data = await fetchGz(`m/${enc(slug)}.json.gz`);
   } catch (error) {
-    app.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: `Failed to load manga: ${error.message}` }));
+    app.replaceChildren(el("div", "empty", `تعذّر تحميل المانجا: ${error.message}`));
     return;
   }
-  const { title, cover, chapters } = data;
+  const { title, cover, updated, chapters } = data;
   crumb.textContent = title;
-  const wrap = document.createElement("div");
-  wrap.className = "manga";
-  const head = document.createElement("div");
-  head.className = "manga-head";
-  const cv = document.createElement("div");
-  cv.className = "manga-cover";
-  cv.append(coverImg(cover, title));
-  const info = document.createElement("div");
-  info.className = "manga-info";
-  const h = document.createElement("h1");
-  h.textContent = title;
-  const meta = document.createElement("p");
-  meta.className = "sub";
-  meta.textContent = `${chapters.length} chapters`;
-  const back = document.createElement("a");
-  back.className = "backlink";
-  back.href = "#/";
-  back.textContent = "← library";
-  info.append(h, meta, back);
-  head.append(cv, info);
 
-  const list = document.createElement("div");
-  list.className = "chapters";
+  const hero = el("div", "manga-hero");
+  const cv = el("div", "manga-cover");
+  cv.append(coverImg(cover, title));
+  const info = el("div", "manga-info");
+  info.append(el("h1", null, title));
+  const tags = el("div", "manga-tags");
+  tags.append(el("span", "tag", `${chapters.length} فصل`));
+  if (updated) tags.append(el("span", "tag", `آخر تحديث ${relTime(updated)}`));
+  tags.append(el("span", "tag neutral", "محفوظ في Wayback"));
+  const back = el("a", "backlink", "← المكتبة");
+  back.href = "#/";
+  info.append(tags, back);
+  hero.append(cv, info);
+
+  const list = el("div", "chapters");
+  // الأحدث أولًا كما في الموقع الأصلي
   for (const ch of [...chapters].reverse()) {
-    const a = document.createElement("a");
-    a.className = "chapter";
+    const a = el("a", "chapter");
     a.href = `#/manga/${enc(slug)}/${enc(ch.id)}`;
-    const label = document.createElement("span");
-    label.textContent = ch.title || ch.id;
-    const count = document.createElement("span");
-    count.className = "ch-count";
-    count.textContent = `${(ch.imgs || []).length}p`;
-    a.append(label, count);
+    const titleSpan = el("span", "ch-title", ch.title || ch.id);
+    const side = el("span", "ch-side");
+    if (ch.iso && isRecent(ch.iso)) side.append(el("span", "ch-new", "جديد"));
+    if (ch.views) side.append(el("span", "ch-views", `👁 ${fmtViews(ch.views)}`));
+    if (ch.date) side.append(el("span", "ch-date", ch.date));
+    a.append(titleSpan, side);
     list.append(a);
   }
-  wrap.append(head, list);
-  app.replaceChildren(wrap);
+
+  app.replaceChildren(hero, list);
   window.scrollTo(0, 0);
 }
 
-// ---- Reader ----
+function isRecent(iso) {
+  const then = new Date(iso + "T00:00:00Z").getTime();
+  return !Number.isNaN(then) && Date.now() - then < 7 * 86400000;
+}
+
+// ---------- القارئ ----------
 
 async function renderReader(slug, chapterId) {
   crumb.textContent = "";
-  app.replaceChildren(Object.assign(document.createElement("div"), { className: "loading", textContent: "Loading chapter…" }));
+  app.replaceChildren(el("div", "loading", "جارٍ تحميل الفصل…"));
   let data;
   try {
     data = await fetchGz(`m/${enc(slug)}.json.gz`);
   } catch (error) {
-    app.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: `Failed to load manga: ${error.message}` }));
+    app.replaceChildren(el("div", "empty", `تعذّر تحميل المانجا: ${error.message}`));
     return;
   }
   const { title, chapters } = data;
   const idx = chapters.findIndex((c) => c.id === chapterId);
   if (idx < 0) {
-    app.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: "Chapter not found." }));
+    app.replaceChildren(el("div", "empty", "الفصل غير موجود."));
     return;
   }
   const ch = chapters[idx];
   const prev = chapters[idx - 1];
   const next = chapters[idx + 1];
   crumb.textContent = `${title} — ${ch.title || ch.id}`;
-  const mangaHref = `#/manga/${enc(slug)}`;
+  const chHref = (c) => c && `#/manga/${enc(slug)}/${enc(c.id)}`;
 
-  const wrap = document.createElement("div");
-  wrap.className = "reader";
-  const bar = document.createElement("div");
-  bar.className = "reader-bar";
-  const back = document.createElement("a");
-  back.href = mangaHref;
-  back.textContent = "← chapters";
-  const ttl = document.createElement("span");
-  ttl.className = "reader-title";
-  ttl.textContent = ch.title || ch.id;
+  const bar = el("div", "reader-bar");
+  const back = el("a", null, "← الفصول");
+  back.href = `#/manga/${enc(slug)}`;
   bar.append(
-    navLink(prev && `#/manga/${enc(slug)}/${enc(prev.id)}`, "‹ prev", !!prev),
+    navLink(chHref(prev), "‹ السابق", !!prev),
     back,
-    ttl,
-    navLink(next && `#/manga/${enc(slug)}/${enc(next.id)}`, "next ›", !!next)
+    el("span", "reader-title", `${ch.title || ch.id}${ch.views ? " · 👁 " + fmtViews(ch.views) : ""}`),
+    navLink(chHref(next), "التالي ›", !!next)
   );
 
-  const strip = document.createElement("div");
-  strip.className = "strip";
-  (ch.imgs || []).forEach((url, i) => {
-    const holder = document.createElement("div");
-    holder.className = "page";
-    if (url) {
-      const img = document.createElement("img");
-      img.loading = "lazy";
-      img.decoding = "async";
-      img.referrerPolicy = "no-referrer";
-      img.alt = `page ${i + 1}`;
-      img.src = url;
-      img.addEventListener("error", () => {
-        holder.classList.add("missing");
-        holder.textContent = `page ${i + 1} unavailable`;
-      }, { once: true });
-      holder.append(img);
-    } else {
-      holder.classList.add("missing");
-      holder.textContent = `page ${i + 1} not archived yet`;
-    }
-    strip.append(holder);
-  });
+  const strip = el("div", "strip");
+  (ch.imgs || []).forEach((url, i) => strip.append(pageHolder(url, i + 1)));
 
-  const bottom = document.createElement("div");
-  bottom.className = "reader-bar bottom";
+  const bottom = el("div", "reader-bar bottom");
   bottom.append(
-    navLink(prev && `#/manga/${enc(slug)}/${enc(prev.id)}`, "‹ previous chapter", !!prev),
-    navLink(next && `#/manga/${enc(slug)}/${enc(next.id)}`, "next chapter ›", !!next)
+    navLink(chHref(prev), "‹ الفصل السابق", !!prev),
+    navLink(chHref(next), "الفصل التالي ›", !!next)
   );
 
-  wrap.append(bar, strip, bottom);
-  app.replaceChildren(wrap);
+  app.replaceChildren(bar, strip, bottom);
   window.scrollTo(0, 0);
 }
 
-// ---- Router ----
+// صفحة واحدة: جرّب رابط الأرشيف، ثم الرابط الأصلي، ثم عنصر نائب.
+function pageHolder(url, num) {
+  const holder = el("div", "page");
+  if (!url) {
+    holder.classList.add("missing");
+    holder.textContent = `الصفحة ${num} غير محفوظة`;
+    return holder;
+  }
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.referrerPolicy = "no-referrer";
+  img.alt = `الصفحة ${num}`;
+  img.addEventListener("error", () => {
+    const original = originalOf(url);
+    if (original && original !== url) {
+      const fallback = document.createElement("img");
+      fallback.referrerPolicy = "no-referrer";
+      fallback.alt = `الصفحة ${num}`;
+      fallback.loading = "lazy";
+      fallback.addEventListener("error", () => {
+        holder.classList.add("missing");
+        holder.textContent = `الصفحة ${num} غير متاحة`;
+      }, { once: true });
+      fallback.src = original;
+      img.replaceWith(fallback);
+    } else {
+      holder.classList.add("missing");
+      holder.textContent = `الصفحة ${num} غير متاحة`;
+    }
+  }, { once: true });
+  img.src = url;
+  holder.append(img);
+  return holder;
+}
+
+// يستخرج الرابط الأصلي من رابط Wayback (للرجوع إليه عند غياب الأرشيف).
+function originalOf(url) {
+  const m = url.match(/^https:\/\/web\.archive\.org\/web\/\d+(?:[a-z]+_)?\/(.+)$/);
+  return m ? m[1] : null;
+}
+
+// ---------- الموجّه ----------
 
 async function route() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter((p) => p !== "");
@@ -264,7 +307,7 @@ async function route() {
       await renderLibrary();
     }
   } catch (error) {
-    app.replaceChildren(Object.assign(document.createElement("div"), { className: "empty", textContent: `Error: ${error.message}` }));
+    app.replaceChildren(el("div", "empty", `خطأ: ${error.message}`));
   }
 }
 
