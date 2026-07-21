@@ -17,7 +17,8 @@ async function gunzip(bytes) {
 
 async function fetchGz(url) {
   if (cache.has(url)) return cache.get(url);
-  const resp = await fetch(url, { cache: "force-cache" });
+  // no-cache: revalidate so new chapters/updates are picked up (304 when unchanged).
+  const resp = await fetch(url, { cache: "no-cache" });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = new TextDecoder().decode(await gunzip(await resp.arrayBuffer()));
   const data = JSON.parse(text);
@@ -252,7 +253,8 @@ async function renderReader(slug, chapterId) {
   window.scrollTo(0, 0);
 }
 
-// صفحة واحدة: جرّب رابط الأرشيف، ثم الرابط الأصلي، ثم عنصر نائب.
+// صفحة واحدة: جرّب أحدث لقطة في Wayback (2id_)، ثم اللقطة المخزّنة، ثم عنصر نائب.
+// لا يمكن الرجوع للرابط الأصلي مباشرة لأن الموقع يمنع التحميل عبر المواقع.
 function pageHolder(url, num) {
   const holder = el("div", "page");
   if (!url) {
@@ -260,32 +262,32 @@ function pageHolder(url, num) {
     holder.textContent = `الصفحة ${num} غير محفوظة`;
     return holder;
   }
+  const original = url.includes("web.archive.org") ? originalOf(url) : url;
+  const candidates = [];
+  if (original) candidates.push(`https://web.archive.org/web/2id_/${original}`);
+  if (url.includes("web.archive.org") && url !== candidates[0]) candidates.push(url);
+  loadImageChain(holder, candidates, num);
+  return holder;
+}
+
+function loadImageChain(holder, candidates, num) {
+  if (!candidates.length) {
+    holder.classList.add("missing");
+    holder.textContent = `الصفحة ${num} غير متاحة`;
+    return;
+  }
+  const [src, ...rest] = candidates;
   const img = document.createElement("img");
   img.loading = "lazy";
   img.decoding = "async";
   img.referrerPolicy = "no-referrer";
   img.alt = `الصفحة ${num}`;
   img.addEventListener("error", () => {
-    const original = originalOf(url);
-    if (original && original !== url) {
-      const fallback = document.createElement("img");
-      fallback.referrerPolicy = "no-referrer";
-      fallback.alt = `الصفحة ${num}`;
-      fallback.loading = "lazy";
-      fallback.addEventListener("error", () => {
-        holder.classList.add("missing");
-        holder.textContent = `الصفحة ${num} غير متاحة`;
-      }, { once: true });
-      fallback.src = original;
-      img.replaceWith(fallback);
-    } else {
-      holder.classList.add("missing");
-      holder.textContent = `الصفحة ${num} غير متاحة`;
-    }
+    img.remove();
+    loadImageChain(holder, rest, num);
   }, { once: true });
-  img.src = url;
+  img.src = src;
   holder.append(img);
-  return holder;
 }
 
 // يستخرج الرابط الأصلي من رابط Wayback (للرجوع إليه عند غياب الأرشيف).
