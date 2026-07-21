@@ -254,7 +254,7 @@ async function renderReader(slug, chapterId) {
 }
 
 // صفحة واحدة: جرّب أحدث لقطة في Wayback (2id_)، ثم اللقطة المخزّنة، ثم عنصر نائب.
-// لا يمكن الرجوع للرابط الأصلي مباشرة لأن الموقع يمنع التحميل عبر المواقع.
+// النسخ المُستضافة (المنقذة من الحذف) تُحمَّل مباشرة؛ لا يمكن الرجوع للموقع الأصلي لأنه يمنع التحميل عبر المواقع.
 function pageHolder(url, num) {
   const holder = el("div", "page");
   if (!url) {
@@ -262,10 +262,19 @@ function pageHolder(url, num) {
     holder.textContent = `الصفحة ${num} غير محفوظة`;
     return holder;
   }
-  const original = url.includes("web.archive.org") ? originalOf(url) : url;
-  const candidates = [];
-  if (original) candidates.push(`https://web.archive.org/web/2id_/${original}`);
-  if (url.includes("web.archive.org") && url !== candidates[0]) candidates.push(url);
+  let candidates;
+  if (url.includes("web.archive.org")) {
+    const original = originalOf(url);
+    candidates = original
+      ? [...new Set([`https://web.archive.org/web/2id_/${original}`, url])]
+      : [url];
+  } else if (/3asq\.|imgur\.com/.test(url)) {
+    // رابط أصلي حي (محجوب عبر المواقع): لا يفيد إلا لقطة Wayback
+    candidates = [`https://web.archive.org/web/2id_/${url}`];
+  } else {
+    // نسخة منقذة مستضافة (GitHub/IA): حمّلها مباشرة
+    candidates = [url];
+  }
   loadImageChain(holder, candidates, num);
   return holder;
 }
