@@ -108,10 +108,16 @@ a { color: inherit; text-decoration: none; }
 }
 .card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: var(--shadow); }
 .card-cover { position: relative; aspect-ratio: 2 / 3; background: var(--bg-soft); overflow: hidden; }
-.card-cover img, .card-cover .cover-ph { width: 100%; height: 100%; object-fit: cover; display: block; }
-.card-cover img { transition: transform 0.3s; }
-.card:hover .card-cover img { transform: scale(1.05); }
+/* الغلاف يُملأ دائمًا بإطار ٢:٣ ويقصّ الصورة لتلائمه (object-fit) بلا تمدّد أو تشوّه. */
+.card-cover img, .manga-cover img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  opacity: 0; transition: opacity 0.45s ease, transform 0.3s ease;
+}
+.card-cover img.loaded, .manga-cover img.loaded { opacity: 1; }
+.card:hover .card-cover img.loaded { transform: scale(1.05); }
 .cover-ph {
+  position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 44px; font-weight: 900; color: var(--muted);
   background: linear-gradient(135deg, var(--card-hover), var(--bg-soft));
@@ -141,8 +147,7 @@ a { color: inherit; text-decoration: none; }
   background: radial-gradient(500px 200px at 100% 0%, var(--accent-soft), transparent 70%);
   pointer-events: none;
 }
-.manga-cover { width: 150px; flex: 0 0 auto; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
-.manga-cover img, .manga-cover .cover-ph { width: 100%; height: 100%; object-fit: cover; display: block; }
+.manga-cover { width: 150px; flex: 0 0 auto; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); position: relative; background: var(--bg-soft); }
 .manga-info { position: relative; min-width: 0; }
 .manga-info h1 { margin: 0 0 6px; font-size: 24px; font-weight: 900; line-height: 1.3; }
 .manga-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }

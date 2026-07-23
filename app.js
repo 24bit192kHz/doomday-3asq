@@ -49,6 +49,19 @@ function fmtViews(views) {
   return views;
 }
 
+// تحميل كسول للأغلفة: لا يُطلَب الغلاف من الشبكة إلا عندما يقترب من نافذة العرض،
+// فتُفتح المكتبة فورًا وتُحمَّل الأغلفة التي يراها القارئ أولًا فقط (بدل ٣٩١ طلبًا دفعة واحدة).
+const coverObserver = ("IntersectionObserver" in window)
+  ? new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        coverObserver.unobserve(img);
+        img.src = img.dataset.src;
+      }
+    }, { rootMargin: "480px 0px", threshold: 0.01 })
+  : null;
+
 function coverPlaceholder(title) {
   const div = document.createElement("div");
   div.className = "cover-ph";
@@ -57,15 +70,29 @@ function coverPlaceholder(title) {
 }
 
 function coverImg(url, title) {
-  if (!url) return coverPlaceholder(title);
   const img = document.createElement("img");
-  img.loading = "lazy";
-  img.decoding = "async";
-  img.referrerPolicy = "no-referrer";
   img.alt = title || "";
-  img.src = url;
-  img.addEventListener("error", () => img.replaceWith(coverPlaceholder(title)), { once: true });
+  img.referrerPolicy = "no-referrer";
+  img.decoding = "async";
+  img.dataset.src = url;
+  img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
+  img.addEventListener("error", () => img.remove(), { once: true });
+  if (coverObserver) {
+    coverObserver.observe(img);
+  } else {
+    img.loading = "lazy";
+    img.src = url;
+  }
   return img;
+}
+
+// طبقة الغلاف: عنصر نائب (حرف العنوان) يظهر فورًا، وفوقه الصورة تُحمَّل كسولًا
+// وتتلاشى عند اكتمالها؛ يبقى العنصر النائب إن تعذّر التحميل أو لم يوجد غلاف.
+function coverBlock(url, title) {
+  const frag = document.createDocumentFragment();
+  frag.append(coverPlaceholder(title));
+  if (url) frag.append(coverImg(url, title));
+  return frag;
 }
 
 function navLink(href, label, enabled = true) {
@@ -140,7 +167,7 @@ function card(m) {
   const a = el("a", "card");
   a.href = `#/manga/${enc(m.slug)}`;
   const cover = el("div", "card-cover");
-  cover.append(coverImg(m.cover, m.title));
+  cover.append(coverBlock(m.cover, m.title));
   if (m.last) cover.append(el("div", "card-badge", `الفصل ${m.last}`));
   const body = el("div", "card-body");
   body.append(el("div", "card-title", m.title || m.slug));
@@ -171,7 +198,7 @@ async function renderManga(slug) {
 
   const hero = el("div", "manga-hero");
   const cv = el("div", "manga-cover");
-  cv.append(coverImg(cover, title));
+  cv.append(coverBlock(cover, title));
   const info = el("div", "manga-info");
   info.append(el("h1", null, title));
   const tags = el("div", "manga-tags");
@@ -324,3 +351,10 @@ async function route() {
 
 window.addEventListener("hashchange", route);
 route();
+
+// Offline support: cache the app shell and visited manga data (stale-while-revalidate
+// in sw.js). Page images still stream from the Wayback Machine. Registration is
+// defensive — if it fails (unsupported browser, scope issue) the reader works normally.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
