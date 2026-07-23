@@ -69,11 +69,12 @@ function coverPlaceholder(title) {
   return div;
 }
 
-function coverImg(url, title) {
+function coverImg(url, title, cls) {
   const img = document.createElement("img");
-  img.alt = title || "";
+  img.alt = cls === "cover-fg" ? (title || "") : "";
   img.referrerPolicy = "no-referrer";
   img.decoding = "async";
+  if (cls) img.className = cls;
   img.dataset.src = url;
   img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
   img.addEventListener("error", () => img.remove(), { once: true });
@@ -86,12 +87,17 @@ function coverImg(url, title) {
   return img;
 }
 
-// طبقة الغلاف: عنصر نائب (حرف العنوان) يظهر فورًا، وفوقه الصورة تُحمَّل كسولًا
-// وتتلاشى عند اكتمالها؛ يبقى العنصر النائب إن تعذّر التحميل أو لم يوجد غلاف.
+// طبقة الغلاف: عنصر نائب (حرف العنوان) يظهر فورًا، ثم خلفية ضبابية بألوان الغلاف
+// نفسه تملأ الإطار، وفوقها الغلاف الفعلي كاملًا دون قصّ (contain). بعض الأغلفة
+// المخزّنة هي لافتات og:image أفقية (1200×630)، فلو قصصناها لتعبئة الإطار لبدت
+// مقرّبة/مبتورة؛ الخلفية الضبابية تملأ الفراغ بأناقة بدل البتر.
 function coverBlock(url, title) {
   const frag = document.createDocumentFragment();
   frag.append(coverPlaceholder(title));
-  if (url) frag.append(coverImg(url, title));
+  if (url) {
+    frag.append(coverImg(url, title, "cover-bg"));
+    frag.append(coverImg(url, title, "cover-fg"));
+  }
   return frag;
 }
 

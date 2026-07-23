@@ -108,14 +108,22 @@ a { color: inherit; text-decoration: none; }
 }
 .card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: var(--shadow); }
 .card-cover { position: relative; aspect-ratio: 2 / 3; background: var(--bg-soft); overflow: hidden; }
-/* الغلاف يُملأ دائمًا بإطار ٢:٣ ويقصّ الصورة لتلائمه (object-fit) بلا تمدّد أو تشوّه. */
-.card-cover img, .manga-cover img {
+/* خلفية ضبابية بألوان الغلاف نفسه تملأ الإطار دائمًا (cover) — تمهّد للفراغ حول
+   الأغلفة ذات النسب المختلفة بدل تركه فارغًا. */
+.card-cover .cover-bg, .manga-cover .cover-bg {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; display: block;
+  object-fit: cover; transform: scale(1.18);
+  filter: blur(18px) brightness(0.5) saturate(1.25);
+  display: block; opacity: 0; transition: opacity 0.5s ease;
+}
+/* الغلاف الفعلي يظهر كاملًا دون قصّ أو تقريب (contain) فوق الخلفية الضبابية. */
+.card-cover .cover-fg, .manga-cover .cover-fg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; display: block;
   opacity: 0; transition: opacity 0.45s ease, transform 0.3s ease;
 }
 .card-cover img.loaded, .manga-cover img.loaded { opacity: 1; }
-.card:hover .card-cover img.loaded { transform: scale(1.05); }
+.card:hover .card-cover .cover-fg.loaded { transform: scale(1.04); }
 .cover-ph {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
