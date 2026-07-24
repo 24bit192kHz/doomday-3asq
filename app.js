@@ -44,9 +44,23 @@ function relTime(iso) {
   return `منذ ${Math.floor(days / 365)} سنوات`;
 }
 
+// Chapter date: if the stored date is a frozen relative string ("منذ …"), recompute
+// a live relative time from the ISO date instead of echoing the stale text; otherwise
+// show the absolute date as-is. Falls back to a live relTime from iso when no date.
+function chWhen(ch) {
+  const frozen = typeof ch.date === "string" && /منذ|قبل/.test(ch.date);
+  if (frozen && ch.iso) return relTime(ch.iso);
+  return ch.date || (ch.iso ? relTime(ch.iso) : "");
+}
+
 function fmtViews(views) {
-  if (!views) return "";
-  return views;
+  if (views == null || views === "") return "";
+  // views is an int in the current data; the string path is back-compat for older
+  // cached JSON that stored comma-grouped strings ("33,281").
+  const n = typeof views === "number"
+    ? views
+    : parseInt(String(views).replace(/[^\d]/g, ""), 10);
+  return Number.isNaN(n) ? String(views) : n.toLocaleString("ar-EG");
 }
 
 // تحميل كسول للأغلفة: لا يُطلَب الغلاف من الشبكة إلا عندما يقترب من نافذة العرض،
@@ -199,7 +213,7 @@ async function renderManga(slug) {
     app.replaceChildren(el("div", "empty", `تعذّر تحميل المانجا: ${error.message}`));
     return;
   }
-  const { title, cover, updated, chapters } = data;
+  const { title, cover, updated, chapters, meta = {} } = data;
   crumb.textContent = title;
 
   const hero = el("div", "manga-hero");
@@ -210,10 +224,39 @@ async function renderManga(slug) {
   const tags = el("div", "manga-tags");
   tags.append(el("span", "tag", `${chapters.length} فصل`));
   if (updated) tags.append(el("span", "tag", `آخر تحديث ${relTime(updated)}`));
+  if (meta.rating != null)
+    tags.append(el("span", "tag gold",
+      `★ ${meta.rating}` + (meta.votes ? ` (${meta.votes.toLocaleString("ar-EG")})` : "")));
+  if (meta.status) tags.append(el("span", "tag", meta.status));
+  if (meta.type) tags.append(el("span", "tag neutral", meta.type));
   tags.append(el("span", "tag neutral", "محفوظ في Wayback"));
+
+  // Full metadata block. Omitted when the JSON carries no meta (old-format files
+  // render exactly as before); every field is individually guarded so partial
+  // metadata renders cleanly.
+  const details = el("div", "manga-details");
+  if (meta.description) details.append(el("p", "manga-desc", meta.description));
+  const row = (label, value) => {
+    const r = el("div", "detail-row");
+    r.append(el("span", "detail-label", label), el("span", "detail-value", value));
+    return r;
+  };
+  if (meta.alt_names) details.append(row("أسماء أخرى", meta.alt_names));
+  if (meta.author) details.append(row("الكاتب", meta.author));
+  if (meta.artist && meta.artist !== meta.author) details.append(row("الرسام", meta.artist));
+  if (meta.team) details.append(row("فرق الترجمة", meta.team));
+  if (meta.year) details.append(row("سنة الإصدار", meta.year));
+  if (Array.isArray(meta.genres) && meta.genres.length) {
+    const g = el("div", "manga-genres");
+    meta.genres.forEach((t) => g.append(el("span", "genre", t)));
+    details.append(g);
+  }
+
   const back = el("a", "backlink", "← المكتبة");
   back.href = "#/";
-  info.append(tags, back);
+  info.append(tags);
+  if (details.childNodes.length) info.append(details);
+  info.append(back);
   hero.append(cv, info);
 
   const list = el("div", "chapters");
@@ -224,8 +267,9 @@ async function renderManga(slug) {
     const titleSpan = el("span", "ch-title", ch.title || ch.id);
     const side = el("span", "ch-side");
     if (ch.iso && isRecent(ch.iso)) side.append(el("span", "ch-new", "جديد"));
-    if (ch.views) side.append(el("span", "ch-views", `👁 ${fmtViews(ch.views)}`));
-    if (ch.date) side.append(el("span", "ch-date", ch.date));
+    if (ch.views != null && ch.views !== "") side.append(el("span", "ch-views", `👁 ${fmtViews(ch.views)}`));
+    const when = chWhen(ch);
+    if (when) side.append(el("span", "ch-date", when));
     a.append(titleSpan, side);
     list.append(a);
   }
@@ -269,7 +313,7 @@ async function renderReader(slug, chapterId) {
   bar.append(
     navLink(chHref(prev), "‹ السابق", !!prev),
     back,
-    el("span", "reader-title", `${ch.title || ch.id}${ch.views ? " · 👁 " + fmtViews(ch.views) : ""}`),
+    el("span", "reader-title", `${ch.title || ch.id}${ch.views != null && ch.views !== "" ? " · 👁 " + fmtViews(ch.views) : ""}`),
     navLink(chHref(next), "التالي ›", !!next)
   );
 
