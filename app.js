@@ -290,7 +290,10 @@ async function renderManga(slug) {
 }
 
 function isRecent(iso) {
-  const then = new Date(iso + "T00:00:00Z").getTime();
+  // Full timestamps (relative dates now resolve to one) parse directly; appending
+  // "T00:00:00Z" to an already-full ISO string makes Invalid Date and would drop
+  // the "جديد" badge from fresh chapters.
+  const then = new Date(iso.includes("T") ? iso : iso + "T00:00:00Z").getTime();
   return !Number.isNaN(then) && Date.now() - then < 7 * 86400000;
 }
 
