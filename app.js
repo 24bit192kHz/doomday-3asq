@@ -29,11 +29,22 @@ async function fetchGz(url) {
 // "منذ …" relative time from an ISO date (like the source site).
 function relTime(iso) {
   if (!iso) return "";
-  const then = new Date(iso + "T00:00:00Z").getTime();
+  // Full timestamp (has "T") parses directly; date-only anchors at UTC midnight.
+  const then = new Date(iso.includes("T") ? iso : iso + "T00:00:00Z").getTime();
   if (Number.isNaN(then)) return "";
-  const days = Math.floor((Date.now() - then) / 86400000);
+  const ms = Date.now() - then;
+  const days = Math.floor(ms / 86400000);
   if (days < 0) return "قريبًا";
-  if (days === 0) return "اليوم";
+  if (days === 0) {
+    // Hour-level for same-day chapters (released_iso now carries a full timestamp
+    // for relative dates), so a chapter from hours ago shows "منذ 7 ساعات", not "اليوم".
+    const hours = Math.floor(ms / 3600000);
+    if (hours < 1) return "منذ أقل من ساعة";
+    if (hours === 1) return "منذ ساعة";
+    if (hours === 2) return "منذ ساعتين";
+    if (hours <= 10) return `منذ ${hours} ساعات`;
+    return `منذ ${hours} ساعة`;
+  }
   if (days === 1) return "منذ يوم";
   if (days === 2) return "منذ يومين";
   if (days <= 10) return `منذ ${days} أيام`;

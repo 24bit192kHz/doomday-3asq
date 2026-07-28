@@ -14,13 +14,13 @@
 //    rate-limit interstitial, which would pin a broken capture forever).
 //
 // Bump CACHE to invalidate every stored entry after a data-format change.
-const CACHE = "doomday-v4";
-// Keep the ?v= in sync with index.html (it loads app.js?v=5 / style.css?v=5);
+const CACHE = "doomday-v5";
+// Keep the ?v= in sync with index.html (it loads app.js?v=6 / style.css?v=6);
 // a bare "app.js" precache key never matches the real request.
 const SHELL = [
   "index.html",
-  "app.js?v=5",
-  "style.css?v=5",
+  "app.js?v=6",
+  "style.css?v=6",
   "favicon.svg",
   "vendor/fflate.esm.js",
 ];
