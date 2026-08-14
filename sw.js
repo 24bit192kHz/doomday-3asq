@@ -14,13 +14,13 @@
 //    rate-limit interstitial, which would pin a broken capture forever).
 //
 // Bump CACHE to invalidate every stored entry after a data-format change.
-const CACHE = "doomday-v6";
-// Keep the ?v= in sync with index.html (it loads app.js?v=7 / style.css?v=7);
+const CACHE = "doomday-v7";
+// Keep the ?v= in sync with index.html (it loads app.js?v=8 / style.css?v=8);
 // a bare "app.js" precache key never matches the real request.
 const SHELL = [
   "index.html",
-  "app.js?v=7",
-  "style.css?v=7",
+  "app.js?v=8",
+  "style.css?v=8",
   "favicon.svg",
   "vendor/fflate.esm.js",
 ];
@@ -102,8 +102,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Same-origin (app shell, catalog, manga data): stale-while-revalidate.
+  // Same-origin.
   if (url.origin === location.origin) {
+    // Page loads (F5, address bar): network-first. Stale-while-revalidate here
+    // served a cached index.html pointing at old ?v= asset references, which
+    // pinned readers on old app generations until a hard reload — the cache
+    // copy now stays as the offline fallback only.
+    if (req.mode === "navigate") {
+      event.respondWith(
+        caches.open(CACHE).then(async (cache) => {
+          try {
+            const resp = await fetch(req);
+            if (resp && resp.ok) cache.put(req, resp.clone());
+            return resp;
+          } catch (err) {
+            const cached = await cache.match(req);
+            if (cached) return cached;
+            throw err;
+          }
+        })
+      );
+      return;
+    }
+    // Assets + reader data (catalog, m/*.json.gz): stale-while-revalidate, so
+    // the library opens instantly and picks up fresh data in the background.
     event.respondWith(
       caches.open(CACHE).then(async (cache) => {
         const cached = await cache.match(req);
