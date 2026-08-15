@@ -420,5 +420,8 @@ route();
 // in sw.js). Page images still stream from the Wayback Machine. Registration is
 // defensive — if it fails (unsupported browser, scope issue) the reader works normally.
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  // ?v= on the register URL forces an immediate SW update when the strategy
+  // changes (browsers otherwise only re-check sw.js ~every 24h). Bump it
+  // together with the SHELL/index.html ?v= whenever sw.js changes.
+  navigator.serviceWorker.register("sw.js?v=9").catch(() => {});
 }
