@@ -22,6 +22,9 @@ async function fetchGz(url) {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = new TextDecoder().decode(await gunzip(await resp.arrayBuffer()));
   const data = JSON.parse(text);
+  // Backstop bound (the hashchange handler clears per navigation): the Map must
+  // never grow without limit in a long-lived session.
+  if (cache.size >= 32) cache.clear();
   cache.set(url, data);
   return data;
 }
@@ -56,11 +59,14 @@ function relTime(iso) {
 }
 
 // Chapter date: if the stored date is a frozen relative string ("منذ …"), recompute
-// a live relative time from the ISO date instead of echoing the stale text; otherwise
-// show the absolute date as-is. Falls back to a live relTime from iso when no date.
+// a live relative time from the ISO date instead of echoing the stale text; a frozen
+// string with no ISO has nothing to recompute from, so show "غير معروف" — never echo
+// the stale "منذ …" text (it would freeze "21 hours ago" forever, without منذ semantics
+// any recompute would be a lie). Otherwise show the absolute date as-is; fall back to
+// a live relTime from iso when no date.
 function chWhen(ch) {
   const frozen = typeof ch.date === "string" && /منذ|قبل/.test(ch.date);
-  if (frozen && ch.iso) return relTime(ch.iso);
+  if (frozen) return ch.iso ? relTime(ch.iso) : "غير معروف";
   return ch.date || (ch.iso ? relTime(ch.iso) : "");
 }
 
@@ -273,9 +279,11 @@ async function renderManga(slug) {
   const list = el("div", "chapters");
   // الأحدث أولًا كما في الموقع الأصلي
   for (const ch of [...chapters].reverse()) {
-    const a = el("a", "chapter");
-    a.href = `#/manga/${enc(slug)}/${enc(ch.id)}`;
-    const titleSpan = el("span", "ch-title", ch.title || ch.id);
+    // Null-id chapters (un-numbered /n-a/ placeholders) have no reader route —
+    // render them as plain rows, never as dead "#/manga/<slug>/null" links.
+    const a = el(ch.id == null ? "span" : "a", "chapter");
+    if (ch.id != null) a.href = `#/manga/${enc(slug)}/${enc(ch.id)}`;
+    const titleSpan = el("span", "ch-title", ch.title || ch.id || "فصل");
     const side = el("span", "ch-side");
     if (ch.iso && isRecent(ch.iso)) side.append(el("span", "ch-new", "جديد"));
     if (ch.views != null && ch.views !== "") side.append(el("span", "ch-views", `👁 ${fmtViews(ch.views)}`));
@@ -310,7 +318,11 @@ async function renderReader(slug, chapterId) {
     return;
   }
   const { title, chapters } = data;
-  const idx = chapters.findIndex((c) => c.id === chapterId);
+  // chapterId may match the visible title number of a slug-less /n-a/ chapter
+  // whose emitted id is the same number (e.g. "389"); as a final fallback,
+  // compare against a null id's title-number too — String() guards ids that
+  // are data-null (un-numbered placeholders hide and are unreachable).
+  const idx = chapters.findIndex((c) => String(c.id) === chapterId);
   if (idx < 0) {
     app.replaceChildren(el("div", "empty", "الفصل غير موجود."));
     return;
@@ -332,7 +344,10 @@ async function renderReader(slug, chapterId) {
   );
 
   const strip = el("div", "strip");
-  (ch.imgs || []).forEach((url, i) => strip.append(pageHolder(url, i + 1)));
+  // Zero-image chapter: an empty strip is a blank dead-end, so render an explicit
+  // empty state instead ("لا صفحات محفوظة لهذا الفصل").
+  if (!(ch.imgs || []).length) strip.append(el("div", "empty", "لا صفحات محفوظة لهذا الفصل."));
+  else (ch.imgs || []).forEach((url, i) => strip.append(pageHolder(url, i + 1)));
 
   const bottom = el("div", "reader-bar bottom");
   bottom.append(
@@ -413,7 +428,9 @@ async function route() {
   }
 }
 
-window.addEventListener("hashchange", route);
+// Per-navigation reset: clear the fetchGz memo so a back/forward route never
+// reuses a stale memoized payload (bound fallback lives in fetchGz as well).
+window.addEventListener("hashchange", () => { cache.clear(); route(); });
 route();
 
 // Offline support: cache the app shell and visited manga data (stale-while-revalidate
@@ -423,5 +440,5 @@ if ("serviceWorker" in navigator) {
   // ?v= on the register URL forces an immediate SW update when the strategy
   // changes (browsers otherwise only re-check sw.js ~every 24h). Bump it
   // together with the SHELL/index.html ?v= whenever sw.js changes.
-  navigator.serviceWorker.register("sw.js?v=9").catch(() => {});
+  navigator.serviceWorker.register("sw.js?v=11").catch(() => {});
 }

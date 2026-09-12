@@ -20,13 +20,13 @@
 // not the data format, so keeping the name preserves every cached cover/page
 // image. The sw.js byte change alone triggers the service-worker update.
 const CACHE = "doomday-v7";
-// Keep the ?v= in sync with index.html (it loads app.js?v=9 / style.css?v=9)
-// and with app.js's register("sw.js?v=9"); a bare "app.js" precache key never
+// Keep the ?v= in sync with index.html (it loads app.js?v=11 / style.css?v=10)
+// and with app.js's register("sw.js?v=11"); a bare "app.js" precache key never
 // matches the real request.
 const SHELL = [
   "index.html",
-  "app.js?v=9",
-  "style.css?v=9",
+  "app.js?v=11",
+  "style.css?v=10",
   "favicon.svg",
   "vendor/fflate.esm.js",
 ];
@@ -135,8 +135,14 @@ self.addEventListener("fetch", (event) => {
             if (resp && resp.ok) cache.put(req, resp.clone());
             return resp;
           } catch (err) {
+            // Normalize directory-root navigations to the precached index.html:
+            // a directory request may carry its own cache key, while the
+            // precache stored "index.html" (ADD maps the response URL as the
+            // request URL, so only cache.match("index.html") is guaranteed).
             const cached = await cache.match(req);
             if (cached) return cached;
+            const index = await cache.match("index.html");
+            if (index) return index;
             throw err;
           }
         })
